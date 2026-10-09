@@ -1,0 +1,20 @@
+{
+  "Current_Index_Count": 7022,
+  "Findings": [
+    {
+      "Check": "Noncanonical_World_Number",
+      "Line": "",
+      "Number": "00350001"
+    }
+  ],
+  "Historical_Only_Count": 45,
+  "Historical_Parse_Error_Count": 71237,
+  "History_Count": 4473,
+  "Missing_World_Time_Count": 0,
+  "Reservation_Count": 7099,
+  "State": "Migration_Candidate",
+  "Unnamed_Count": 805,
+  "Version_Count": 34164,
+  "World_Only_Count": 31,
+  "World_Time_Count": 34164
+}
