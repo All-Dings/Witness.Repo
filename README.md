@@ -164,16 +164,25 @@ workspace disposable Var directory when there is no Git checkout).
 and latest recorded Versions. Standalone `witness.py` uses this view and requires
 no Arrow dependency. Display order is numeric, independently of append order.
 
-All-Dings derives a local `.Dings/Var/Witness/Index.arrow` containing sorted
-64-bit Dings Numbers, registration Names and current Versions. Internal identity
-checks, Name maps and allocation use this memory-mapped projection. These Numbers
-are actual Dings identities, not the local dictionary codes in SM query snapshots.
-The snapshot records its journal checkpoint; new lines update a small Memory
-overlay. Migration apply, missing-cache reads and large batches generate a new
-checkpoint without `make render`. A checksum detects damaged cache files;
-changed source prefixes require replay. The cache is disposable, is not committed
-to Witness.Repo, and never replaces JSONL as the durable authority. Full
-`index list`, historical Version output and `index check` still read JSONL evidence.
+All-Dings uses the same standard-library JSONL reader for internal identity
+checks, Name maps and allocation. It keeps only Numbers, registration Names and
+current Versions in a process-local Memory view, without retaining File hashes.
+Unchanged files reuse that view. Every changed file is replayed completely,
+including after manual Git checkout, truncation or rewriting a prefix while
+appending new records. Invalid records or a concurrent file change reject the
+read instead of returning the old view. No persistent derived index, cache
+checksum or Build is required. Full `index list`, historical Version output and
+`index check` read the complete JSONL evidence.
+
+Automatic Number allocation reads the Header and the most recent Reservation or
+World checkpoint from the journal tail. Its optional `Watermark` is the highest
+occupied Number, stored as a canonical Number String. New reservations update
+it, including batches and explicit higher Numbers. Explicit lower Numbers leave
+it unchanged. Legacy records without a Watermark fall back to a complete replay.
+Exact Number selection and `index check` still reconcile all Numbers and the
+readable register. Full replay also verifies recorded Watermarks. Reset/Rebase
+recompute unpublished Watermarks, so checkout and history rewriting need no
+separate allocation file. Durable append recovery retains its prefix checksums.
 
 `Dings_Lib_Witness.Append_Versions` accepts public Version evidence selected by
 its caller from committed World records. Identical retries add nothing;

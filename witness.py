@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import threading
 
 
 def _Object(Pairs):
@@ -114,6 +115,10 @@ def _Validate_Reservation(Row):
 	if Row.get('Type') != 'Reservation':
 		raise ValueError('Expected Reservation')
 	_Validate_Number(Row.get('Number'))
+	if 'Watermark' in Row:
+		_Validate_Number(Row['Watermark'])
+		if int(Row['Watermark']) < int(Row['Number']):
+			raise ValueError('Watermark is below reserved Number')
 	if type(Row.get('In_Current_Index')) is not bool:
 		raise ValueError('In_Current_Index must be Bool')
 	if 'First_Index_Commit' in Row:
@@ -145,8 +150,10 @@ def _Validate_Version_Record(Row):
 
 
 def _Validate_World_Record(Row):
-	if Row.get('Type') != 'World_Witness' or set(Row) != {'Type', 'World', 'World_Fingerprint', 'World_BCT', 'Version_Count'}:
+	if Row.get('Type') != 'World_Witness' or set(Row) - {'Watermark'} != {'Type', 'World', 'World_Fingerprint', 'World_BCT', 'Version_Count'}:
 		raise ValueError('Invalid World_Witness record')
+	if 'Watermark' in Row:
+		_Validate_Number(Row['Watermark'])
 	_Match(Row['World'], r'W\.V\.(0|[1-9][0-9]*)', 'World')
 	_Fingerprint(Row['World_Fingerprint'])
 	_Integer(Row['Version_Count'], 'Version_Count')
@@ -174,6 +181,8 @@ class Journal_View:
 		Seed = len(Self.Seed_Rows) < Self.Metadata['Initial_Reservation_Count']
 		if not Seed and Row.get('Type') == 'World_Witness':
 			_Validate_World_Record(Row)
+			if 'Watermark' in Row and int(Row['Watermark']) != Self.Maximum_Number:
+				raise ValueError('World Watermark differs from reserved Numbers')
 			Previous = Self.Last_World or Self.Metadata
 			if int(Row['World'][4:]) != int(Previous['World'][4:]) + 1:
 				raise ValueError('Witness Worlds must be consecutive')
@@ -191,9 +200,12 @@ class Journal_View:
 				raise ValueError('Initial reservations must be numerically ordered')
 			if not Seed and ('Version' in Row or 'First_Index_Commit' in Row or 'Legacy_Hash_Assertion' in Row):
 				raise ValueError('New reservations cannot contain migration or Version evidence')
+			Maximum = max(Self.Maximum_Number, int(Number))
+			if 'Watermark' in Row and int(Row['Watermark']) != Maximum:
+				raise ValueError('Reservation Watermark differs from reserved Numbers')
 			Stored = Self._Stored(Row)
 			Self.By_Number[Number] = Stored
-			Self.Maximum_Number = max(Self.Maximum_Number, int(Number))
+			Self.Maximum_Number = Maximum
 			if Seed:
 				Self.Seed_Rows.append(Stored)
 			return
@@ -219,38 +231,35 @@ class Journal_View:
 
 
 class Journal_Index:
-	"""A disposable memory index; Refresh consumes only the appended tail."""
-	def __init__(Self, Path_Value):
+	"""Read JSONL directly; reuse an immutable memory view while the File is unchanged."""
+	def __init__(Self, Path_Value, Keep_Files=True):
 		Self.Path = Path(Path_Value)
+		Self.Keep_Files = Keep_Files
 		Self.View = None
 		Self.Signature = None
-		Self.Offset = 0
-		Self.Line_Count = 0
+		Self.Lock = threading.RLock()
+
+	def _Signature(Self):
+		Stat = Self.Path.stat()
+		return (Stat.st_dev, Stat.st_ino, Stat.st_size, Stat.st_mtime_ns, Stat.st_ctime_ns)
 
 	def Refresh(Self):
-		Stat = Self.Path.stat()
-		Signature = (Stat.st_dev, Stat.st_ino, Stat.st_size, Stat.st_mtime_ns, Stat.st_ctime_ns)
-		if Signature == Self.Signature:
-			return Self
-		Append = Self.View is not None and Signature[:2] == Self.Signature[:2] and Stat.st_size > Self.Offset
-		try:
-			with Self.Path.open('rb') as Stream:
-				if Append:
-					Stream.seek(Self.Offset)
-				else:
-					Self.View = Journal_View(_Read_Line(Stream.readline(), 1))
-					Self.Line_Count = 1
-				for Line in Stream:
-					Self.Line_Count += 1
-					Self.View.Apply(_Read_Line(Line, Self.Line_Count))
-				Self.View.Complete()
-				Self.Offset = Stream.tell()
-			Self.Signature = Signature
-		except Exception:
-			Self.View = None
-			Self.Signature = None
-			Self.Offset = 0
-			raise
+		with Self.Lock:
+			try:
+				Signature = Self._Signature()
+				if Signature == Self.Signature:
+					return Self
+				with Self.Path.open('rb') as Stream:
+					View = Journal_View(_Read_Line(Stream.readline(), 1), Keep_Files=Self.Keep_Files)
+					for Number, Line in enumerate(Stream, 2):
+						View.Apply(_Read_Line(Line, Number))
+					View.Complete()
+				if Self._Signature() != Signature:
+					raise ValueError('Witness journal changed while reading; retry')
+				Self.View, Self.Signature = View, Signature
+			except Exception:
+				Self.View, Self.Signature = None, None
+				raise
 		return Self
 
 
