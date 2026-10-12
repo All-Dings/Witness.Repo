@@ -803,6 +803,7 @@
 300044109.md   Dings_App_Boundary_Kind
 300044108.md   Dings_App_Boundary
 300044107.md   Dings_Git_Repository_State
+300044106.md   Dings_Fmt_Lean
 300044105.md   Dings_SM_Program_Run_Request
 300044104.md   Dings_Fmt_DMD
 300044103.md   Dings_SM_Statement_List
