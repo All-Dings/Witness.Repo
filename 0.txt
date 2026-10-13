@@ -1613,6 +1613,8 @@
 ### Z1-Wählwerk-mit-Lean
 
 400007607.md   Z1-Wählwerk-with-Lean.lean
+400007605.md   Z1-Wählwerk-with-Lean-LWD-Movie-Cut.mp4
+400007604.md   Z1-Wählwerk-with-Lean-LWD-Movie.fcproj
 400007603.md
 400007602.md   Z1-Wählwerk-with-Lean-LWD-Thumb-Nail.jpg
 400007601.md   Z1-Wählwerk-with-Lean-LWD.afdesign
