@@ -149,6 +149,20 @@ def _Validate_Version_Record(Row):
 		_Fingerprint(Row.get('World_Fingerprint'))
 
 
+def _Validate_Name_Record(Row):
+	if set(Row) != {'Type', 'Number', 'Name', 'Previous_Name'} or Row.get('Type') != 'Name_Change':
+		raise ValueError('Invalid Name_Change record')
+	_Validate_Number(Row['Number'])
+	for Key in ['Name', 'Previous_Name']:
+		Value = Row[Key]
+		if Key == 'Previous_Name' and Value is None:
+			continue
+		if not isinstance(Value, str) or not Value.strip() or any(C in Value for C in '\r\n\t'):
+			raise ValueError('Invalid Name_Change ' + Key)
+	if Row['Name'] == Row['Previous_Name']:
+		raise ValueError('Name_Change must change the published Name')
+
+
 def _Validate_World_Record(Row):
 	if Row.get('Type') != 'World_Witness' or set(Row) - {'Watermark'} != {'Type', 'World', 'World_Fingerprint', 'World_BCT', 'Version_Count'}:
 		raise ValueError('Invalid World_Witness record')
@@ -179,6 +193,13 @@ class Journal_View:
 
 	def Apply(Self, Row):
 		Seed = len(Self.Seed_Rows) < Self.Metadata['Initial_Reservation_Count']
+		if not Seed and Row.get('Type') == 'Name_Change':
+			_Validate_Name_Record(Row)
+			Current = Self.By_Number.get(Row['Number'])
+			if Current is None or Current.get('Name') != Row['Previous_Name']:
+				raise ValueError('Name_Change predecessor differs from the reserved Name')
+			Self.By_Number[Row['Number']] = Self._Stored(dict(Current, Name=Row['Name'], Name_Source='Name_Change'))
+			return
 		if not Seed and Row.get('Type') == 'World_Witness':
 			_Validate_World_Record(Row)
 			if 'Watermark' in Row and int(Row['Watermark']) != Self.Maximum_Number:
@@ -391,7 +412,7 @@ Sub-Commands:
   witness.py markdown > Dings_World_Index.md
   witness.py --index /path/to/World-Index.jsonl list
 
-Names record registration or the legacy Index. Hashes come from recorded World Evidence;
+Names record registration, explicit Name changes or the legacy Index. Hashes come from recorded World Evidence;
 the Reader does not recompute them from original Files.''')
 	Optional = Parser.add_argument_group('Optional Arguments')
 	Optional.add_argument('-h', '--help', action='help', help='Show this Help-Message and exit')
@@ -430,7 +451,7 @@ the Reader does not recompute them from original Files.''')
 		if Options.command == 'markdown':
 			print('# Dings World Index\n')
 			print('Initial Migration World: ' + Metadata['World'] + '. Latest recorded Versions are shown.\n')
-			print('State: ' + Metadata['State'] + '. Names record registration or the legacy Index.\n')
+			print('State: ' + Metadata['State'] + '. Names record registration, explicit Name changes or the legacy Index.\n')
 			for Row in sorted(Rows, key=lambda R: int(R['Number'])):
 				print('* ' + Row.get('Version', Row['Number']) + ' ' + Row.get('Name', '(unnamed)'))
 			return 0
