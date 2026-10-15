@@ -1,0 +1,8 @@
+# Vim Swap files
+*.swp
+*.swo
+*.swx
+
+# Local temporary work files
+/tmp/*
+!/tmp/.gitkeep
