@@ -236,7 +236,11 @@ class Journal_View:
 		if Row['Version'] in Self.Appended_Versions:
 			raise ValueError('Duplicate Version Address in journal')
 		Self.Appended_Versions[Row['Version']] = Self._Stored(Row)
-		Self.World_Version_Count += 1
+		# Historical disclosure is appended after its original World was already
+		# witnessed. It does not belong to the next World checkpoint's count.
+		Checkpoint = Self.Last_World or Self.Metadata
+		if not Row.get('World') or int(Row['World'][4:]) > int(Checkpoint['World'][4:]):
+			Self.World_Version_Count += 1
 		Current = Self.By_Number[Row['Number']]
 		if 'Version' not in Current or int(Row['Version'].split('.V.')[1]) > int(Current['Version'].split('.V.')[1]):
 			Base = {K: V for K, V in Current.items() if K not in ['Version', 'Version_Fingerprint', 'Files', 'World', 'World_Fingerprint', 'World_BCT', 'Witness_BCT']}
@@ -288,6 +292,31 @@ def Read_Index(Path_Value):
 	return Journal_Index(Path_Value).Refresh().View.Result()
 
 
+def Read_Publication_Policy(Path_Value):
+	Policy_Path = Path(Path_Value).with_name('Publication-Policy.json')
+	if Policy_Path.is_symlink():
+		raise ValueError('Publication Policy must be a regular File')
+	try:
+		Policy = json.loads(Policy_Path.read_text(encoding='utf-8'))
+	except FileNotFoundError:
+		return None
+	if (not isinstance(Policy, dict) or set(Policy) != {'Type', 'Format_Version', 'Private_Number_List', 'Public_Number_List'}
+		or Policy['Type'] != 'Witness_Publication_Policy' or type(Policy['Format_Version']) is not int
+		or Policy['Format_Version'] != 1):
+		raise ValueError('Invalid Witness Publication Policy')
+	for Key in ['Private_Number_List', 'Public_Number_List']:
+		Values = Policy[Key]
+		if not isinstance(Values, list):
+			raise ValueError('Invalid Publication Policy Numbers')
+		for Number in Values:
+			_Validate_Number(Number)
+		if len(Values) != len(set(Values)):
+			raise ValueError('Duplicate Publication Policy Number')
+	if set(Policy['Private_Number_List']) & set(Policy['Public_Number_List']):
+		raise ValueError('Conflicting Publication Policy')
+	return Policy
+
+
 def Validate_Index(Rows):
 	Lines = iter(Rows)
 	View = Journal_View(next(Lines, {}))
@@ -303,6 +332,9 @@ def Check(Path_Value):
 	Validate_History(Metadata, Rows, list(Read_Lines(History)), History.read_bytes())
 	if 'Versions_SHA256' in Metadata or Index.View.Appended_Versions:
 		_Versions(Index)
+	Policy = Read_Publication_Policy(Path_Value)
+	if Policy is not None and (set(Policy['Private_Number_List']) | set(Policy['Public_Number_List'])) - set(Index.View.By_Number):
+		raise ValueError('Publication Policy requires reserved Numbers')
 	return Metadata, Rows
 
 
@@ -420,6 +452,8 @@ the Reader does not recompute them from original Files.''')
 		help='Show SHA1 and SHA256 Hashes for list; Default: SHA1 only')
 	Optional.add_argument('--index', type=Path, default=Path(__file__).with_name('World-Index.jsonl'),
 		metavar='INDEX', help='Index JSONL File; Default: World-Index.jsonl beside witness.py')
+	Optional.add_argument('-private', '--private', choices=['true', 'false'],
+		help='Filter by current Publication Policy')
 	Positional = Parser.add_argument_group('Arguments')
 	Positional.add_argument('command', choices=['list', 'show', 'check', 'markdown'],
 		help='Select the Sub-Command')
@@ -448,6 +482,12 @@ the Reader does not recompute them from original Files.''')
 		else:
 			Rows = [Row for Row in Rows if fnmatch.fnmatchcase(Row['Number'], Options.selector)
 				or fnmatch.fnmatchcase(Row.get('Name', ''), Options.selector)]
+		Policy = Read_Publication_Policy(Options.index)
+		Private = set(Policy['Private_Number_List']) if Policy is not None else None
+		if Options.private is not None:
+			if Private is None:
+				raise ValueError('Private filtering requires initialized Publication Policy')
+			Rows = [R for R in Rows if (R['Number'] in Private) == (Options.private == 'true')]
 		if Options.command == 'markdown':
 			print('# Dings World Index\n')
 			print('Initial Migration World: ' + Metadata['World'] + '. Latest recorded Versions are shown.\n')
@@ -455,7 +495,7 @@ the Reader does not recompute them from original Files.''')
 			for Row in sorted(Rows, key=lambda R: int(R['Number'])):
 				print('* ' + Row.get('Version', Row['Number']) + ' ' + Row.get('Name', '(unnamed)'))
 			return 0
-		Table = [('Version / Number', 'Index Name', 'File', 'Hashes')]
+		Table = [('Version / Number', 'Index Name', 'Private', 'File', 'Hashes')]
 		All_Hashes = Options.command != 'list' or Options.verbose
 		for Row in Rows:
 			Files = Row.get('Files') or [None]
@@ -467,7 +507,8 @@ the Reader does not recompute them from original Files.''')
 					if All_Hashes or Assertion['Algorithm'] == 'SHA-1':
 						Hashes = 'Unverified legacy assertion: ' + Assertion['Digest']
 				Name = Row['Number'] + '.' + File['Selector'] if File else '-'
-				Table.append((Row.get('Version', Row['Number']), Row.get('Name', '-'), Name, Hashes))
+				Table.append((Row.get('Version', Row['Number']), Row.get('Name', '-'),
+					str(Row['Number'] in Private).lower() if Private is not None else 'Unknown', Name, Hashes))
 		Widths = [max(len(Row[Index]) for Row in Table) for Index in range(len(Table[0]) - 1)]
 		for Row in Table:
 			print('  '.join(Value.ljust(Width) for Value, Width in zip(Row, Widths)) + '  ' + Row[-1])
