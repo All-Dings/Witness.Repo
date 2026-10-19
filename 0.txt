@@ -3041,6 +3041,7 @@
 
 ## Work-Item
 
+300101115.md   Integrate-ArtCraft-in-All-Dings
 300101114.md   Complete-SM-JSON-Field-Contracts
 300101113.md   Finalize-Dings-App-Format-and-SM-Dispatch
 300101112.md   Dings-System-Security
@@ -8535,3 +8536,4 @@
 ## Michael_Holzheu
 
 0.md   Michael-Georg_Holzheu
+100000000001.md   Integrate-ArtCraft-in-All-Dings
