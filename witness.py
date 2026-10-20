@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standalone, standard-library-only reader for Witness journal format 2.
+"""Standalone, standard-library-only reader for Witness journal formats 2 and 3.
 
 Exported as witness.py into Witness.Repo by dings-gpt index migrate.
 """
@@ -61,10 +61,11 @@ def _Fingerprint(Value):
 	_Match(Value, r'(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})', 'Fingerprint')
 
 
-def _Validate_Version(Row):
+def _Validate_Version(Row, Format=2):
 	if 'Version' in Row:
 		_Match(Row['Version'], re.escape(Row['Number']) + r'\.V\.(0|[1-9][0-9]*)', 'Version')
-		_Fingerprint(Row.get('Version_Fingerprint'))
+		if 'Version_Fingerprint' in Row:
+			_Fingerprint(Row['Version_Fingerprint'])
 	Files = Row.get('Files', [])
 	if not isinstance(Files, list) or (Files and 'Version' not in Row):
 		raise ValueError('Files require an exact Version')
@@ -85,6 +86,27 @@ def _Validate_Version(Row):
 			if not isinstance(Hash, dict) or Hash.get('Algorithm') not in Pattern:
 				raise ValueError('Unsupported Hash Algorithm')
 			_Match(Hash.get('Digest'), Pattern[Hash['Algorithm']], 'Digest')
+
+
+def Merge_Version(Previous, Added):
+	"""Extend file evidence without changing any existing file assertion."""
+	if Previous.get('Version') != Added.get('Version') or Previous.get('Number') != Added.get('Number'):
+		raise ValueError('Different Version identities')
+	Files = {F['Selector']: F for F in Previous.get('Files', [])}
+	for File in Added.get('Files', []):
+		Old = Files.get(File['Selector'])
+		if Old is not None:
+			def Hashes(Item):
+				return sorted((H['Algorithm'], H['Digest']) for H in Item['Hash_List'])
+			if Old['Byte_Size'] != File['Byte_Size'] or Hashes(Old) != Hashes(File):
+				raise ValueError('File evidence conflict: ' + Added['Version'] + '.' + File['Selector'])
+		else:
+			Files[File['Selector']] = File
+	Result = {K: V for K, V in Previous.items() if K in ['Number', 'Version', 'Files', 'Creation_BCT', 'Witness_BCT']}
+	Result.update(Type='Dings_Version', Files=sorted(Files.values(), key=lambda F: F['Selector']))
+	if len(Files) > len(Previous.get('Files', [])):
+		Result['Witness_BCT'] = None
+	return Result
 
 
 def _Validate_Metadata(Metadata):
@@ -111,7 +133,7 @@ def _Validate_Number(Number):
 		raise ValueError('Dings Number exceeds signed-64-bit storage')
 
 
-def _Validate_Reservation(Row):
+def _Validate_Reservation(Row, Format=2):
 	if Row.get('Type') != 'Reservation':
 		raise ValueError('Expected Reservation')
 	_Validate_Number(Row.get('Number'))
@@ -126,7 +148,7 @@ def _Validate_Reservation(Row):
 	if 'Name' in Row:
 		if not isinstance(Row['Name'], str) or not Row['Name'].strip() or any(C in Row['Name'] for C in '\r\n\t') or Row.get('Name_Source') not in ['Legacy_Index', 'Registration']:
 			raise ValueError('Invalid Index Name')
-	_Validate_Version(Row)
+	_Validate_Version(Row, Format)
 	if 'Legacy_Hash_Assertion' in Row:
 		Hash = Row['Legacy_Hash_Assertion']
 		Pattern = {'SHA-1': r'[0-9a-f]{40}', 'SHA-256': r'[0-9a-f]{64}'}
@@ -135,14 +157,14 @@ def _Validate_Reservation(Row):
 		_Match(Hash.get('Digest'), Pattern[Hash['Algorithm']], 'Legacy Digest')
 
 
-def _Validate_Version_Record(Row):
+def _Validate_Version_Record(Row, Format=2):
 	if Row.get('Type') != 'Dings_Version' or 'Version' not in Row:
 		raise ValueError('Expected Dings_Version with exact Version Address')
 	_Validate_Number(Row.get('Number'))
-	_Validate_Version(Row)
+	_Validate_Version(Row, Format)
 	# Version events never replace reservation Names or allocation metadata.
 	if set(Row) - {'Type', 'Number', 'Version', 'Version_Fingerprint', 'Files',
-		'World', 'World_Fingerprint', 'World_BCT', 'Witness_BCT'}:
+		'World', 'World_Fingerprint', 'World_BCT', 'Witness_BCT', 'Creation_BCT'}:
 		raise ValueError('Unsupported Dings_Version field')
 	if 'World' in Row:
 		_Match(Row['World'], r'W\.V\.(0|[1-9][0-9]*)', 'World')
@@ -213,7 +235,7 @@ class Journal_View:
 			Self.World_Version_Count = 0
 			return
 		if Seed or Row.get('Type') == 'Reservation':
-			_Validate_Reservation(Row)
+			_Validate_Reservation(Row, Self.Metadata['Format_Version'])
 			Number = Row['Number']
 			if Number in Self.By_Number:
 				raise ValueError('Reservations must be unique')
@@ -230,20 +252,22 @@ class Journal_View:
 			if Seed:
 				Self.Seed_Rows.append(Stored)
 			return
-		_Validate_Version_Record(Row)
+		_Validate_Version_Record(Row, Self.Metadata['Format_Version'])
 		if Row['Number'] not in Self.By_Number:
 			raise ValueError('Version requires a reserved Number')
 		if Row['Version'] in Self.Appended_Versions:
-			raise ValueError('Duplicate Version Address in journal')
+			Row = Merge_Version(Self.Appended_Versions[Row['Version']], Row)
 		Self.Appended_Versions[Row['Version']] = Self._Stored(Row)
 		# Historical disclosure is appended after its original World was already
 		# witnessed. It does not belong to the next World checkpoint's count.
 		Checkpoint = Self.Last_World or Self.Metadata
-		if not Row.get('World') or int(Row['World'][4:]) > int(Checkpoint['World'][4:]):
+		if 'Version_Fingerprint' in Row and (not Row.get('World') or int(Row['World'][4:]) > int(Checkpoint['World'][4:])):
 			Self.World_Version_Count += 1
 		Current = Self.By_Number[Row['Number']]
-		if 'Version' not in Current or int(Row['Version'].split('.V.')[1]) > int(Current['Version'].split('.V.')[1]):
-			Base = {K: V for K, V in Current.items() if K not in ['Version', 'Version_Fingerprint', 'Files', 'World', 'World_Fingerprint', 'World_BCT', 'Witness_BCT']}
+		if 'Version' not in Current or int(Row['Version'].split('.V.')[1]) >= int(Current['Version'].split('.V.')[1]):
+			if Current.get('Version') == Row['Version']:
+				Row = Merge_Version(Current, Row)
+			Base = {K: V for K, V in Current.items() if K not in ['Version', 'Version_Fingerprint', 'Files', 'World', 'World_Fingerprint', 'World_BCT', 'Witness_BCT', 'Creation_BCT']}
 			Self.By_Number[Row['Number']] = Self._Stored(dict(Base, **{K: V for K, V in Row.items() if K not in ['Type', 'Number']}))
 
 	def Complete(Self):
@@ -352,7 +376,7 @@ def _Versions(Index):
 	By_Address = {V['Version']: V for V in Versions}
 	for Address, Version in View.Appended_Versions.items():
 		if Address in By_Address:
-			raise ValueError('Duplicate Version Address in seed and journal: ' + Address)
+			Version = Merge_Version(By_Address[Address], Version)
 		By_Address[Address] = Version
 	return sorted(By_Address.values(), key=lambda V: (int(V['Number']), int(V['Version'].split('.V.')[1])))
 
@@ -375,7 +399,7 @@ def Validate_Versions(Metadata, Rows, Versions, Payload):
 			raise ValueError('Version requires a reserved Number')
 		if 'Version' not in Version:
 			raise ValueError('Missing exact Version Address')
-		_Validate_Version(Version)
+		_Validate_Version(Version, Metadata['Format_Version'])
 		Order = (int(Version['Number']), int(Version['Version'].split('.V.')[1]))
 		if Order <= Previous:
 			raise ValueError('Versions must be unique and numerically ordered')
@@ -385,7 +409,7 @@ def Validate_Versions(Metadata, Rows, Versions, Payload):
 		if 'Version' in Row:
 			Version = By_Address.get(Row['Version'], {})
 			if any(Version.get(Key) != Row.get(Key) for Key in
-				['Version_Fingerprint', 'Files', 'World', 'World_Fingerprint', 'World_BCT', 'Witness_BCT']):
+				(['Files', 'Witness_BCT'])):
 				raise ValueError('Current Version differs from historical Versions export: ' + Row['Version'])
 
 
@@ -477,7 +501,7 @@ the Reader does not recompute them from original Files.''')
 				Version = next((V for V in Versions if V['Version'] == Options.selector), None)
 				if Version is None:
 					raise ValueError('Version is not recorded in this Witness Index: ' + Options.selector)
-				Selected = [dict(Selected[0], **{K: Version[K] for K in ['Version', 'Version_Fingerprint', 'Files']})]
+				Selected = [dict(Selected[0], **{K: Version[K] for K in ['Version', 'Files', 'Creation_BCT', 'Witness_BCT'] if K in Version})]
 			Rows = Selected
 		else:
 			Rows = [Row for Row in Rows if fnmatch.fnmatchcase(Row['Number'], Options.selector)
@@ -490,7 +514,7 @@ the Reader does not recompute them from original Files.''')
 			Rows = [R for R in Rows if (R['Number'] in Private) == (Options.private == 'true')]
 		if Options.command == 'markdown':
 			print('# Dings World Index\n')
-			print('Initial Migration World: ' + Metadata['World'] + '. Latest recorded Versions are shown.\n')
+			print(('Legacy migration reference: ' + Metadata['World'] + '. ') + 'Latest recorded Versions are shown.\n')
 			print('State: ' + Metadata['State'] + '. Names record registration, explicit Name changes or the legacy Index.\n')
 			for Row in sorted(Rows, key=lambda R: int(R['Number'])):
 				print('* ' + Row.get('Version', Row['Number']) + ' ' + Row.get('Name', '(unnamed)'))

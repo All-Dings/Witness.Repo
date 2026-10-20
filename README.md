@@ -7,7 +7,31 @@ allocation authority used by All-Dings creation and import commands.
 
 This repository has independent Git history. It is not a constitutive World
 Source, and coordinated World commits and rebases do not rewrite it. Publication
-is a separate step after the final World identity has been established.
+is a separate step and does not require a stable World address.
+
+## Independent File evidence with the existing format
+
+The writer now retains the existing Format_Version 2 header, sidecars and
+journal prefix byte for byte. Legacy World references, checkpoints and Version
+fingerprints are historical metadata; they do not bind evidence to the current
+World and are not compared with a rebuilt World. No data migration is needed.
+
+New Dings_Version records omit World references and Version fingerprints. They
+record the exact Version address, File selectors, byte sizes and checksums.
+A Version can gain additional File selectors. Identical evidence is idempotent;
+a changed size or checksum for an existing selector fails. Existing File proofs
+are never removed because a later World omits them. Recorded source times may
+appear as Creation_BCT; existing World_BCT values remain unchanged.
+
+Index update appends missing File evidence and creates independent Witness
+commits without new World checkpoints. World reset/rebase does not rewrite
+Witness, release Number reservations or rewind the register. Publication policy,
+append/commit recovery, register checks and sidecar integrity hashes remain active.
+The updated reader accepts old records and new records with omitted legacy
+fields. Older readers may reject new records and should be updated.
+
+The World-specific publication and rewrite descriptions below document the
+previous policy. They do not apply to the independent File-evidence writer.
 
 ## Read without All-Dings
 
@@ -151,6 +175,12 @@ lower bound. Legacy Sections no longer define allocation ranges. New automatic
 allocation follows the highest registered Number at or above the selected start;
 gaps and historical reservations are never reused automatically.
 
+`blog new` explicitly selects the inclusive range `300102000-300102999`.
+The shared allocator chooses after its highest historical reservation while
+holding the writer lock, independently of the global watermark and register
+headings. Exhaustion fails without mutation or fallback. Other callers retain
+their existing global allocation unless they explicitly request a range.
+
 A shared writer lock protects reservations and Version additions. A durable
 intent records each target's original length and SHA256 and the exact bytes to
 append. The writer appends to JSONL and, for new reservations, to `0.txt`, then
@@ -198,6 +228,11 @@ record closes each World with its fingerprint, Source time and public Version
 count. This also records Worlds that produce no public File evidence. Each
 completed World receives its own Witness Git Commit, outside the World itself.
 
+Commit Messages contain one Line. Completed Worlds use `Witness W.V.N`.
+Separate pending Reservations and Register Layout use
+`Witness Reservations for W.V.N` with the Update's target World. This Title
+does not assign a Reservation a producing World or Version.
+
 `dings-gpt index update` finishes missing Worlds in order. Retrying does not
 append duplicate Versions. A local durable Git publication intent handles a
 failed Commit and a crash immediately after successful Commit. Unrelated staged
@@ -211,8 +246,14 @@ The commit command reports `Witness: Pending`, exits with findings, and instruct
 the user to run `dings-gpt index update`. The first update validates and commits
 the prepared migration bundle when Witness HEAD is unborn. This never pushes.
 
-Each new Number adds `NUMBER.md NAME`, omitting non-public Names. Existing lines
-are never rewritten for renames, Versions or rebases. Source creation is
+Each new Number adds `NUMBER.md NAME`, omitting non-public Names. The readable
+`0.txt` Register permits manual sorting, Section Headings and Whitespace changes.
+Every Number must occur exactly once and agree with the JSONL Reservations.
+Committed Entries retain their Number, Registration Name, Suffix and optional
+Checksum. Publication and World Reset/Rebase preserve manual Layout while
+removing only released unpublished Reservations. `World-Index.jsonl` retains
+its immutable committed Prefix. Do not edit Files during a pending Reservation
+or Publication because Recovery requires the exact prepared Bytes. Source creation is
 preflighted, but a failure after reservation leaves the Number occupied. Bulk
 callers can reserve a batch without a Source scan or semantic Build per Number.
 The current CLI file imports still import one File at a time; batch Source
