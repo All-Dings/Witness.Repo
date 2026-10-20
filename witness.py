@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standalone, standard-library-only reader for Witness journal formats 2 and 3.
+"""Standalone, standard-library-only reader for Witness journal format 2.
 
 Exported as witness.py into Witness.Repo by dings-gpt index migrate.
 """
