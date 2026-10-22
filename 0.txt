@@ -479,6 +479,10 @@
 
 400007689.md   LWD-Sichere-Rente-???
 
+## ArtCraft-and-All-Dings
+
+400007611.md   ArtCraft-and-All-Dings.vectorcraft
+
 ## Z1-Wählwerk-mit-Lean
 
 400007607.md   Z1-Wählwerk-with-Lean.lean
@@ -3424,6 +3428,7 @@
 300045003.md   Dings_SM_Channel_Mapping
 300045002.md   Dings_SM_Channel_Pipe
 300045001.md   Dings_SM_Channel
+300044262.md   Dings_Fmt_VectorCraft_Project
 300044261.md   Dings_Fmt_FilmCraft_Project
 300044260.md   Dings_Role_Host
 300044259.md   Dings_User_Host
@@ -7277,6 +7282,7 @@
 
 ## Informatics
 
+2000324.md   VectorCraft
 2000323.md   FilmCraft
 2000322.md   Claude-AI
 2000321.md   ISO-8601-Time-Standard
