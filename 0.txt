@@ -3049,6 +3049,8 @@
 
 ## Work-Item
 
+300101117.md   Implement-ArtCraft-Recorder
+300101116.md   Model-Video-Editing-in-SM
 300101115.md   Integrate-ArtCraft-in-All-Dings
 300101114.md   Complete-SM-JSON-Field-Contracts
 300101113.md   Finalize-Dings-App-Format-and-SM-Dispatch
@@ -3417,6 +3419,28 @@
 
 ## Ontology
 
+300045038.md   Dings_SM_Recording_Event
+300045037.md   Dings_SM_Recording
+300045036.md   Dings_SM_Video_Cut_Library_Item
+300045035.md   Dings_Fmt_FCP7XML
+300045034.md   Dings_Fmt_Premiere_Project
+300045033.md   Dings_SM_Channel_Pipe_Video_Cut
+300045032.md   Dings_SM_Program_Write_FCPROJ
+300045031.md   Dings_SM_Program_Read_PRPROJ
+300045030.md   Dings_App_Channel_Pipe
+300045029.md   Dings_App_Video_Cut
+300045028.md   Dings_SM_Video_Cut_Parameter
+300045027.md   Dings_SM_Video_Cut_Resource_Binding
+300045026.md   Dings_SM_Video_Cut_Recording_Anchor
+300045025.md   Dings_SM_Video_Cut_Transition
+300045024.md   Dings_SM_Video_Cut_Keyframe
+300045023.md   Dings_SM_Video_Cut_Effect
+300045022.md   Dings_SM_Video_Cut_Graphic
+300045021.md   Dings_SM_Video_Cut_Media_Source
+300045020.md   Dings_SM_Video_Cut_Clip
+300045019.md   Dings_SM_Video_Cut_Track
+300045018.md   Dings_SM_Video_Cut_Sequence
+300045017.md   Dings_SM_Video_Cut_Project
 300045016.md   Dings_App_Bundle
 300045015.md   Dings_SM_Image
 300045014.md   Dings_Fmt_SM_Arrow
