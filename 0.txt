@@ -4449,6 +4449,12 @@
 
 ## Programming
 
+250000052.md   Loss-Function
+250000051.md   Activation-Function
+250000050.md   Bias-Parameter
+250000049.md   Weight-Parameter
+250000048.md   Neural-Network-Layer
+250000047.md   Artificial-Neuron
 250000046.md   Resource-Description-Framework
 250000045.md   Web-Ontology-Language
 250000044.md   Retrieval-Augmented-Generation
@@ -6514,6 +6520,8 @@
 
 ## Mathematics
 
+13010010.md   Linear-Function
+13010009.md   Constant-Function
 13010008.md   Logarithm
 13010007.md   Analysis
 13010006.md   Euler-Number
@@ -6958,6 +6966,8 @@
 
 ## Graph-Ontology
 
+9015012.md   Weighted_Graph_Edge
+9015011.md   Weighted_Graph
 9015010.md   Graph_Sibling
 9015009.md   Graph_Child
 9015008.md   Graph_Parent
